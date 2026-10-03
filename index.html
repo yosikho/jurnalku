@@ -32,7 +32,10 @@
   --bg:#12161a; --surface:#1d2329; --surface-2:#262e35; --fg:#e7ecf0; --muted:#9aa6b0; --line:#2f3840;
   --head:#0c0f12; --head-fg:#eef2f5; --accent:#7cc0e6; --accent-soft:#1f3b4d; --journal:#45bff6;
   --danger:#f2b8b5; --ok:#8fd3a8; --scrim:rgba(0,0,0,.6); color-scheme:dark}
-html,body{height:100%}
+html,body{height:100%;overflow-x:hidden}
+.entry>span{min-width:0}
+.entry .t.wrap{white-space:normal;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}
+.otd .x,.ev-body,.pcard q{overflow-wrap:anywhere}
 body{background:var(--bg);color:var(--fg);font-family:var(--f-ui);font-size:15px;line-height:1.45}
 *{box-sizing:border-box}
 button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;padding:0}
@@ -87,9 +90,9 @@ h1,h2,h3{margin:0;font-weight:400;text-wrap:balance}
 .daybadge{width:64px;height:76px;border-radius:32px;background:var(--surface-2);display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.1}
 .daybadge small{font-size:.72rem;letter-spacing:.06em;color:var(--muted)}
 .daybadge b{font-size:1.6rem;font-weight:400}
-.entry .t{font-weight:700;font-size:1rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.entry .t{display:block;font-weight:700;font-size:1rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .entry .p{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-top:2px}
-.entry .m{font-size:.82rem;color:var(--muted);margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.entry .m{display:block;font-size:.82rem;color:var(--muted);margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .entry .m .j{color:#1ea3dd}
 .thumb{width:84px;height:84px;border-radius:14px;object-fit:cover;background:var(--surface-2);display:block}
 .tag{color:var(--accent);font-weight:500;cursor:pointer}
@@ -516,7 +519,7 @@ function entryList(list){
       const showDay=dk!==lastDay;lastDay=dk;
       out+=`<button class="entry ${i===0?'first':''} ${i===g.items.length-1?'last':''}" data-act="view" data-id="${esc(e.id)}">
         ${showDay?`<span class="daybadge"><small>${HR[d.getDay()]}</small><b class="num">${pad(d.getDate())}</b></span>`:'<span></span>'}
-        <span style="min-width:0"><span class="t">${esc(title||'Tanpa judul')}</span><span class="p">${esc(rest)}</span>
+        <span style="min-width:0"><span class="t${rest?'':' wrap'}">${esc(title||'Tanpa judul')}</span>${rest?`<span class="p">${esc(rest)}</span>`:''}
         <span class="m"><span class="j">Jurnal</span> · ${hm(d)}${e.place&&e.place.name?' · '+esc(e.place.name):''}${(e.audio||[]).length?' · 🎙':''}</span></span>
         ${ph?`<img class="thumb" alt="" ${mattrs(ph)}>`:'<span></span>'}
       </button>`;
