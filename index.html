@@ -82,6 +82,11 @@ h1,h2,h3{margin:0;font-weight:400;text-wrap:balance}
 .chips{display:flex;gap:8px;flex-wrap:wrap}
 .chip{padding:6px 12px;border-radius:99px;background:var(--surface);color:var(--fg);font-size:.86rem;border:1px solid transparent}
 .chip.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.datef{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;padding-top:14px}
+.datef label{display:flex;flex-direction:column;gap:4px;font-size:.78rem;color:var(--muted);flex:1;min-width:130px}
+.datef input{font:inherit;font-size:.9rem;color:var(--fg);background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:8px 10px;width:100%;box-sizing:border-box}
+.datef .chip{display:inline-flex;align-items:center;gap:4px}
+.datef .chip svg.i{width:14px;height:14px}
 .month-h{font-size:1.6rem;margin:22px 16px 12px}
 .entries{display:flex;flex-direction:column;gap:4px;padding-inline:8px}
 .entry{display:grid;grid-template-columns:64px minmax(0,1fr) auto;gap:12px;align-items:start;text-align:left;background:var(--surface);padding:14px 12px;border-radius:6px;width:100%}
@@ -545,6 +550,8 @@ function places(){const m=new Map();S.entries.forEach(e=>{if(e.place&&e.place.na
 function filtered(){
   let l=S.entries;
   if(S.tag)l=l.filter(e=>(e.tags||[]).includes(S.tag));
+  if(S.from)l=l.filter(e=>e.date.slice(0,10)>=S.from);
+  if(S.to)l=l.filter(e=>e.date.slice(0,10)<=S.to);
   const q=S.q.trim().toLowerCase();
   if(q){const tq=q.startsWith('#')?q.slice(1):null;
     l=l.filter(e=>tq?(e.tags||[]).some(t=>t.startsWith(tq)):(e.text||'').toLowerCase().includes(q)||(e.place&&e.place.name||'').toLowerCase().includes(q))}
@@ -610,8 +617,10 @@ function vJournals(){
   let body='';
   if(S.jtab==='list'){
     const l=filtered();
-    body=(tags.length?`<div class="chips pad" style="padding-top:14px">${S.tag?`<button class="chip on" data-act="tag" data-tag="">#${esc(S.tag)} ${ic('x')}</button>`:''}${tags.filter(t=>t[0]!==S.tag).slice(0,14).map(([t,n])=>`<button class="chip" data-act="tag" data-tag="${esc(t)}">#${esc(t)} <span class="muted num">${n}</span></button>`).join('')}</div>`:'')
-      +(l.length?entryList(l):S.entries.length?emptyBox('Tidak ada yang cocok','Coba kata lain, atau ketik # untuk mencari hashtag.'):emptyBox('Belum ada entri','Tekan “Entri baru” untuk menulis yang pertama, atau impor jurnal Day One dari tab Lainnya.'));
+    const today=dkey(new Date());
+    body=`<div class="datef pad"><label><span>Dari</span><input type="date" id="df-from" value="${esc(S.from||'')}" max="${esc(S.to||today)}"></label><label><span>Sampai</span><input type="date" id="df-to" value="${esc(S.to||'')}" min="${esc(S.from||'')}" max="${today}"></label>${S.from||S.to?`<button class="chip on" data-act="df-clear" aria-label="Hapus filter tanggal">${S.from&&S.from===S.to?'1 hari':l.length+' entri'} ${ic('x')}</button>`:''}</div>`
+      +(tags.length?`<div class="chips pad" style="padding-top:10px">${S.tag?`<button class="chip on" data-act="tag" data-tag="">#${esc(S.tag)} ${ic('x')}</button>`:''}${tags.filter(t=>t[0]!==S.tag).slice(0,14).map(([t,n])=>`<button class="chip" data-act="tag" data-tag="${esc(t)}">#${esc(t)} <span class="muted num">${n}</span></button>`).join('')}</div>`:'')
+      +(l.length?entryList(l):S.entries.length?emptyBox('Tidak ada yang cocok',S.from||S.to?'Tidak ada entri di rentang tanggal ini. Ubah tanggalnya atau hapus filter.':'Coba kata lain, atau ketik # untuk mencari hashtag.'):emptyBox('Belum ada entri','Tekan “Entri baru” untuk menulis yang pertama, atau impor jurnal Day One dari tab Lainnya.'));
   }else if(S.jtab==='calendar')body=vCalendar();
   else if(S.jtab==='media')body=vMedia();
   else body=vMap();
@@ -1221,6 +1230,7 @@ document.addEventListener('click',async ev=>{
    case 'pick-tpl':tplPicker(true);break;
    case 'otdlist':{const l=onThisDay(S.day);if(!l.length){toast('Belum ada entri di tanggal ini pada tahun sebelumnya.');break}if(l.length===1)openView(l[0]);else{const md=S.day.slice(5);S.tab='journals';S.jtab='list';S.tag=null;S.searchOpen=false;S.q='';render();toast(`${l.length} entri di tanggal ini, gulir daftar untuk melihatnya`)}break}
    case 'view':{if(map)map.closePopup();const e=S.entries.find(x=>x.id===b.dataset.id);if(e)openView(e);break}
+   case 'df-clear':S.from=null;S.to=null;render();break;
    case 'tag':closeOverlay();S.tag=b.dataset.tag||null;S.q='';S.tab='journals';S.jtab='list';render();scrollTo(0,0);break;
    case 'search':S.searchOpen=true;S._focusQ=true;S.jtab='list';render();break;
    case 'search-close':S.searchOpen=false;S.q='';render();break;
@@ -1298,7 +1308,8 @@ document.addEventListener('submit',async e=>{
     $('#au-pass')&&$('#au-pass').focus();
   }
 });
-document.addEventListener('change',e=>{if(e.target.id==='autoloc'){S.autoLoc=e.target.checked;ls.set('jurnal-autoloc',S.autoLoc)}});
+document.addEventListener('change',e=>{if(e.target.id==='autoloc'){S.autoLoc=e.target.checked;ls.set('jurnal-autoloc',S.autoLoc)}
+  if(e.target.id==='df-from'||e.target.id==='df-to'){const v=e.target.value||null;if(e.target.id==='df-from'){S.from=v;if(v&&S.to&&S.to<v)S.to=v}else{S.to=v;if(v&&S.from&&S.from>v)S.from=v}render()}});
 document.addEventListener('input',e=>{if(e.target.id==='q'){S.q=e.target.value;clearTimeout(S._qt);S._qt=setTimeout(()=>{const pos=e.target.selectionStart;S._focusQ=true;render();const q=$('#q');if(q)q.setSelectionRange(pos,pos)},180)}});
 document.addEventListener('mousedown',e=>{if(e.target.closest('.ed-dock button,.ed-bar .ed-c'))e.preventDefault()});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){if($('#dlg').innerHTML&&!IMP.running&&!rec)closeDialog();else if(viewing)closeOverlay()}});
