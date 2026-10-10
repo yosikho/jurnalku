@@ -37,6 +37,8 @@ Data tersimpan di Supabase dan sinkron otomatis di semua device yang login denga
 ## Mengubah aplikasi nanti
 Ganti file `index.html` di GitHub lewat **Add file → Upload files**. Data tidak ikut terhapus, karena data tersimpan di Supabase, bukan di GitHub.
 
+Jika versi baru menambah kolom database, jalankan ulang seluruh isi `setup.sql` di **SQL Editor**. Skripnya aman dijalankan ulang dan tidak menghapus data.
+
 ## Batas paket gratis Supabase
 - 1 GB untuk foto dan suara, kira-kira 4.000 foto.
 - 500 MB untuk teks.
