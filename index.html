@@ -306,6 +306,7 @@ img{max-width:100%}
 <input type="file" id="f-camera" accept="image/*" capture="environment" hidden>
 <input type="file" id="f-audio" accept="audio/*" hidden>
 <input type="file" id="f-import" accept=".zip,.json,application/zip,application/json" hidden>
+<input type="file" id="f-import-md" accept=".txt,text/plain" hidden>
 
 <script src="config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
@@ -727,6 +728,12 @@ function vMore(){
    </ol>
    <p class="muted" style="margin:0;font-size:.85rem">Aman diulang: entri yang sudah masuk dilewati, jadi tidak ada duplikat.</p>
    <button class="btn pri" style="align-self:flex-start" data-act="import">Pilih file ekspor Day One</button>
+  </div>
+  <p class="grp-h">Impor dari Moment Diary</p>
+  <div class="grp" style="padding:16px;display:flex;flex-direction:column;gap:10px">
+   <p style="margin:0">Pulihkan catatan dari file cadangan teks (.txt) Moment Diary, lengkap dengan tanggal dan jamnya.</p>
+   <p class="muted" style="margin:0;font-size:.85rem">File .txt hanya berisi teks, jadi foto dari Moment Diary tidak ikut. Aman diulang: catatan yang sudah masuk dilewati.</p>
+   <button class="btn pri" style="align-self:flex-start" data-act="import-md">Pilih file .txt Moment Diary</button>
   </div>`;
 }
 
@@ -1115,7 +1122,7 @@ function placeOf(loc){
 const IMP={running:false,cancel:false};
 function impProgress(p){
   const pct=p.total?Math.round(p.done/p.total*100):0;
-  dialog(`<h3>Mengimpor dari Day One</h3>
+  dialog(`<h3>Mengimpor dari ${esc(p.from||'Day One')}</h3>
    <div class="meter"><div style="width:${pct}%"></div></div>
    <p class="num" style="margin:0"><b>${p.done}</b> dari ${p.total} entri · ${pct}%</p>
    <p class="muted num" style="margin:0;font-size:.88rem">${p.photos} foto · ${p.audio} suara · ${p.skipped} sudah ada (dilewati)${p.failed?` · <span style="color:var(--danger)">${p.failed} gagal</span>`:''}</p>
@@ -1196,6 +1203,61 @@ async function runImport(file){
     dialog(`<h3>Impor gagal</h3><p style="margin:0">${esc(err&&err.message||'File tidak bisa dibaca.')}</p><div class="btns"><button class="btn ghost" data-act="dlg-close">Tutup</button></div>`);
   }finally{try{wake&&wake.release()}catch(e){}}
 }
+/* ---------- Moment Diary import (.txt) ---------- */
+// Format: "- Feb 7, 2017 Tuesday 09:43" lalu baris-baris isi sampai judul berikutnya.
+const MD_MON={jan:1,feb:2,mar:3,apr:4,may:5,mei:5,jun:6,jul:7,aug:8,agu:8,agt:8,sep:9,oct:10,okt:10,nov:11,dec:12,des:12};
+const MD_HEAD=/^-\s+([A-Za-z]{3})[A-Za-z]*\.?\s+(\d{1,2}),?\s+(\d{4})(?:\s+\S+)?\s+(\d{1,2})[:.](\d{2})\s*$/;
+function hash53(str){let h1=0xdeadbeef,h2=0x41c6ce57;for(let i=0;i<str.length;i++){const c=str.charCodeAt(i);h1=Math.imul(h1^c,2654435761);h2=Math.imul(h2^c,1597334677)}
+  h1=Math.imul(h1^(h1>>>16),2246822507)^Math.imul(h2^(h2>>>13),3266489909);h2=Math.imul(h2^(h2>>>16),2246822507)^Math.imul(h1^(h1>>>13),3266489909);
+  return (4294967296*(2097151&h2)+(h1>>>0)).toString(36)}
+function parseMomentDiary(txt){
+  const out=[];let cur=null;
+  const p2=n=>String(n).padStart(2,'0');
+  const close=()=>{if(!cur)return;const text=cur.lines.join('\n').replace(/[ \t]+$/gm,'').replace(/\n{3,}/g,'\n\n').trim();if(text)out.push({date:cur.date,text});cur=null};
+  for(const line of String(txt).replace(/^\uFEFF/,'').split(/\r\n?|\n/)){
+    const m=line.match(MD_HEAD),mo=m&&MD_MON[m[1].toLowerCase()];
+    if(mo&&+m[2]>=1&&+m[2]<=31&&+m[4]<24){close();cur={date:`${m[3]}-${p2(mo)}-${p2(m[2])}T${p2(m[4])}:${m[5]}`,lines:[]};continue}
+    if(cur)cur.lines.push(line);
+  }
+  close();
+  return out.map(e=>({...e,id:'md-'+hash53(e.date+'\n'+e.text)}));
+}
+async function runMomentImport(file){
+  if(IMP.running)return;
+  IMP.running=true;IMP.cancel=false;
+  const p={from:'Moment Diary',done:0,total:0,photos:0,audio:0,skipped:0,failed:0,note:'Membaca file…'};
+  impProgress(p);
+  try{
+    const list=parseMomentDiary(await file.text());
+    if(!list.length)throw new Error('Tidak ada catatan Moment Diary di file ini. Pastikan memilih file .txt cadangan dari Moment Diary.');
+    const existing=new Set(S.entries.map(e=>e.id)),seen=new Set();
+    p.total=list.length;p.note='';impProgress(p);
+    const todo=[];
+    for(const m of list){if(existing.has(m.id)||seen.has(m.id)){p.skipped++;p.done++;continue}seen.add(m.id);
+      const e={id:m.id,date:m.date,text:m.text,photos:[],audio:[],place:null,source:'momentdiary'};
+      e.ts=parseLocal(e.date).getTime();e.tags=tagsOf(e.text);e.updated=Date.now();todo.push(e)}
+    impProgress(p);
+    for(let i=0;i<todo.length;i+=50){
+      if(IMP.cancel)break;
+      const chunk=todo.slice(i,i+50);
+      try{must(await retry(()=>sb.from('entries').upsert(chunk.map(toRow),{onConflict:'user_id,id'})));S.entries.push(...chunk)}
+      catch(x){p.failed+=chunk.length;p.note=errMsg(x)}
+      p.done+=chunk.length;impProgress(p);
+    }
+    sortEntries();
+    IMP.running=false;
+    dialog(`<h3>${IMP.cancel?'Impor dihentikan':'Impor selesai'}</h3>
+     <p class="num" style="margin:0">${p.done-p.skipped-p.failed} catatan baru dari Moment Diary</p>
+     <p class="muted num" style="margin:0;font-size:.9rem">${p.skipped} sudah ada (dilewati)${p.failed?` · ${p.failed} gagal`:''}</p>
+     ${p.note?`<p style="margin:0;color:var(--danger)">${esc(p.note)}</p>`:''}
+     ${IMP.cancel||p.failed?'<p class="muted" style="margin:0;font-size:.85rem">Pilih file yang sama lagi untuk melanjutkan. Catatan yang sudah masuk tidak akan diduplikasi.</p>':''}
+     <div class="btns"><button class="btn pri" data-act="imp-done">Lihat jurnal</button></div>`,true);
+    scheduleRefresh(300);
+  }catch(err){
+    IMP.running=false;
+    dialog(`<h3>Impor gagal</h3><p style="margin:0">${esc(err&&err.message||'File tidak bisa dibaca.')}</p><div class="btns"><button class="btn ghost" data-act="dlg-close">Tutup</button></div>`);
+  }
+}
 function downloadFile(name,text){const b=new Blob([text],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000)}
 
 /* ---------- events ---------- */
@@ -1238,6 +1300,7 @@ document.addEventListener('click',async ev=>{
    case 'usage':{b.disabled=true;b.textContent='Menghitung…';try{S.usage=await storageUsage();render()}catch(e){toast('Gagal menghitung pemakaian.');b.disabled=false;b.textContent='Hitung pemakaian'}break}
    case 'export':downloadFile(`jurnalku-${dkey(new Date())}.json`,JSON.stringify({exported:new Date().toISOString(),entries:S.entries,templates:S.templates},null,2));toast('Cadangan diunduh');break;
    case 'import':$('#f-import').click();break;
+   case 'import-md':$('#f-import-md').click();break;
    case 'imp-done':closeDialog();S.tab='journals';S.jtab='list';S.tag=null;S.q='';S.searchOpen=false;render();scrollTo(0,0);break;
    case 'dlg-close':case 'dlg-bg':closeDialog();break;
    case 'ov-close':closeOverlay();break;
@@ -1303,6 +1366,7 @@ document.addEventListener('input',e=>{if(e.target.id==='q'){S.q=e.target.value;c
 document.addEventListener('mousedown',e=>{if(e.target.closest('.ed-dock button,.ed-bar .ed-c'))e.preventDefault()});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){if($('#dlg').innerHTML&&!IMP.running&&!rec)closeDialog();else if(viewing)closeOverlay()}});
 $('#f-import').addEventListener('change',e=>{const f=e.target.files[0];e.target.value='';if(f)runImport(f)});
+$('#f-import-md').addEventListener('change',e=>{const f=e.target.files[0];e.target.value='';if(f)runMomentImport(f)});
 ['photo','camera','audio'].forEach(k=>{const inp=$('#f-'+k);inp.addEventListener('change',()=>{const fs=[...inp.files];inp.value='';handleFiles(fs,k)})});
 window.addEventListener('online',()=>{S.online=true;scheduleRefresh(200)});
 window.addEventListener('offline',()=>{S.online=false;render()});
