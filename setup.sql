@@ -9,6 +9,7 @@ create table if not exists public.entries (
   date       text   not null,              -- waktu lokal, format 2026-10-03T08:55
   ts         bigint not null,              -- untuk urutan
   text       text   not null default '',
+  html       text,                         -- isi berformat (judul, checklist, tabel, foto di dalam teks)
   tags       text[] not null default '{}',
   place      jsonb,                        -- {name, lat, lng}
   photos     jsonb  not null default '[]',
@@ -18,6 +19,7 @@ create table if not exists public.entries (
   created_at timestamptz not null default now(),
   primary key (user_id, id)
 );
+alter table public.entries add column if not exists html text;   -- untuk database lama
 create index if not exists entries_user_ts on public.entries (user_id, ts desc);
 
 -- 2. Tabel template
